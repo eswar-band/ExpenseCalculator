@@ -1,49 +1,64 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Expense Calculator</title>
-  <link rel="stylesheet" type="text/css" href="styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Calculator</title>
+<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="icon" href="favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
 <body>
-  <h1>Expense Calculator</h1>
-  <form id="expense-form">
-    <label for="person">Person:</label>
-    <input type="text" id="person" required><br>
-    <label for="date">Date:</label>
-    <input type="date" id="date" required><br>
-    <label for="item">Item:</label>
-    <input type="text" id="item" required><br>
-    <label for="amount">Amount:</label>
-    <input type="number" id="amount" required><br>
-    <button type="submit">Add Expense</button>
-  </form>
-  
-  <h2>Expenses List</h2>
-  <table id="expenses-table">
-    <thead>
-      <tr>
-        <th>Serial No.</th>
-        <th data-sort="person">Person</th>
-        <th data-sort="date">Date</th>
-        <th data-sort="item">Item</th>
-        <th data-sort="amount">Amount</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- Expenses will be added here -->
-    </tbody>
-  </table>
+<div class="wrap">
+  <header>
+    <h1>Expense Calculator</h1>
+    <div class="tools"><button class="ghost theme" id="theme" type="button" aria-label="Switch theme">☾</button>
+    <div class="total"><small>Total spent</small><strong id="total">₹0.00</strong></div></div>
+  </header>
 
-  <h2>Summary</h2>
-  <div id="summary"></div>
+  <div class="grid">
+    <aside class="side card">
+      <h2>Add expense</h2>
+      <form id="form">
+        <label>Person<input id="person" required autocomplete="off" placeholder="e.g. Eswar"></label>
+        <label>Date<input id="date" type="date" required></label>
+        <label>Item<input id="item" autocomplete="off" placeholder="e.g. Dinner (optional for ₹0)"></label>
+        <label>Amount (₹)<input id="amount" type="number" inputmode="decimal" min="0" step="0.01" required placeholder="0.00"></label>
+        <p class="hint">Someone who spent nothing this month? Add them with ₹0 so they are included in the split.</p>
+        <p id="err" class="err" role="alert" hidden></p>
+        <button class="primary" type="submit">Add expense</button>
+      </form>
+    </aside>
 
-  <h2>Settlement Amounts</h2>
-  <div id="settlement"></div>
+    <main class="stack">
+      <section class="card">
+        <h2>Expenses</h2>
+        <table>
+          <thead><tr><th>#</th><th data-sort="person" tabindex="0">Person</th><th data-sort="date" tabindex="0">Date</th><th data-sort="item" tabindex="0">Item</th><th data-sort="amount" tabindex="0">Amount</th><th></th></tr></thead>
+          <tbody id="list"></tbody>
+        </table>
+        <div class="empty" id="empty">No expenses yet. Add the first one.</div>
+      </section>
 
-  <button id="download">Download PDF</button>
-<h6><center>Power By @eswar<center></h6>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>
-  <script src="script.js"></script>
+      <section class="card">
+        <h2>Summary</h2>
+        <div class="chips" id="summary"></div>
+      </section>
+
+      <section class="card">
+        <h2>Settlement</h2>
+        <div id="settle"></div>
+        <div class="actions"><button class="ghost" id="pdf" type="button">Download PDF</button></div>
+      </section>
+    </main>
+  </div>
+  <footer>Powered by @eswar</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
