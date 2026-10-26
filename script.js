@@ -170,24 +170,32 @@ $('clear').addEventListener('click', () => {
   save(); render();
 });
 
-// Fonts are fetched once at page load so the PDF and Share buttons stay instant (needed for share on iOS)
-let fontData = null;
-const fontsReady = (async () => {
+// Fonts come from fonts.js (embedded), so no extra files or network requests are needed
+const fontData = window.NOTO_SANS || null;
+const fontsReady = Promise.resolve();
+
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const p2 = n => String(n).padStart(2, '0');
+const stamp = d => { const h = d.getHours() % 12 || 12; return `${p2(d.getDate())}-${MON[d.getMonth()]}-${d.getFullYear()} ${p2(h)}:${p2(d.getMinutes())} ${d.getHours() >= 12 ? 'PM' : 'AM'}`; };
+// Same data on the same day keeps the same invoice number, so Download and Share match
+function invoiceNo(now) {
+  const ymd = `${now.getFullYear()}${p2(now.getMonth() + 1)}${p2(now.getDate())}`;
+  const sig = ymd + JSON.stringify(expenses.map(x => [x.person, x.date, x.item, x.amount]));
   try {
-    const get = async n => {
-      const r = await fetch('fonts/' + n); if (!r.ok) throw new Error(n);
-      const b = new Uint8Array(await r.arrayBuffer()); let t = '';
-      for (let i = 0; i < b.length; i += 8192) t += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
-      return btoa(t);
-    };
-    fontData = {normal: await get('NotoSans-Regular.ttf'), bold: await get('NotoSans-Bold.ttf')};
-  } catch (e) { fontData = null; }
-})();
+    const last = JSON.parse(localStorage.getItem('invoice-last') || 'null');
+    if (last && last.sig === sig) return last.no;
+    const seq = (parseInt(localStorage.getItem('invoice-seq'), 10) || 0) + 1;
+    const no = `INV-${ymd}-${String(seq).padStart(4, '0')}`;
+    localStorage.setItem('invoice-seq', seq); localStorage.setItem('invoice-last', JSON.stringify({sig, no}));
+    return no;
+  } catch (e) { return `INV-${ymd}-${Math.floor(1000 + Math.random() * 9000)}`; }
+}
 
 async function buildPdf() {
   if (!window.jspdf) return null;
   await fontsReady;
   const {jsPDF} = window.jspdf, doc = new jsPDF(), c = compute();
+  const now = new Date(), inv = invoiceNo(now); doc.invoiceNo = inv;
   let F = 'helvetica', cur = 'Rs. ';
   if (fontData) {
     doc.addFileToVFS('NotoSans-Regular.ttf', fontData.normal); doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
@@ -198,15 +206,15 @@ async function buildPdf() {
   const TEAL = [15, 92, 87], GOLD = [242, 169, 59], INK = [15, 47, 46], MUTED = [93, 115, 113],
         SOFT = [242, 245, 243], RED = [192, 57, 43], GREEN = [29, 122, 79];
   const pm = n => cur + n.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  const dates = expenses.map(x => x.date).sort();
-  const period = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : dates[0] + ' to ' + dates[dates.length - 1]) : 'No expenses';
 
   // header band
   doc.setFillColor(...TEAL); doc.rect(0, 0, W, 36, 'F');
   doc.setFillColor(...GOLD); doc.rect(0, 36, W, 2, 'F');
-  doc.setTextColor(255); doc.setFont(F, 'bold'); doc.setFontSize(22); doc.text('Expense Report', M, 18);
+  doc.setTextColor(255); doc.setFont(F, 'bold'); doc.setFontSize(24); doc.text('Expense Report', M, 23);
   doc.setFont(F, 'normal'); doc.setFontSize(10);
-  doc.text(period + '   |   Generated ' + new Date().toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}), M, 27);
+  doc.setFontSize(9); doc.text('INVOICE NO.', W - M, 13, {align: 'right'});
+  doc.setFont(F, 'bold'); doc.setFontSize(13); doc.text(inv, W - M, 20, {align: 'right'});
+  doc.setFont(F, 'normal'); doc.setFontSize(9); doc.text('Generated ' + stamp(now), W - M, 27, {align: 'right'});
 
   // stat cards
   const stats = [['Total spent', pm(c.total)], ['People', String(c.people.length)], ['Each share', pm(c.share)]];
@@ -256,9 +264,14 @@ async function buildPdf() {
      }});
 
   section('Who pays whom');
-  table(['From', 'To', 'Amount'],
-    c.pays.length ? c.pays.map(x => [x.from, x.to, pm(x.amt)]) : [['Everyone is settled up', '', '']],
-    {columnStyles: {2: {halign: 'right', fontStyle: 'bold'}}});
+  table(['From', 'To', 'Action', 'Amount'],
+    c.pays.length ? c.pays.map(x => [x.from, x.to, 'Needs Pay', pm(x.amt)]) : [['Everyone is settled up', '', '', '']],
+    {columnStyles: {2: {halign: 'center'}, 3: {halign: 'right', fontStyle: 'bold'}},
+     didParseCell: d => {
+       if (d.section === 'body' && d.column.index === 2 && d.cell.raw === 'Needs Pay') {
+         d.cell.styles.textColor = RED; d.cell.styles.fontStyle = 'bold';
+       }
+     }});
 
   // footer on every page
   const n = doc.internal.getNumberOfPages();
@@ -267,12 +280,13 @@ async function buildPdf() {
     doc.setDrawColor(...GOLD); doc.setLineWidth(.4); doc.line(M, H - 14, W - M, H - 14);
     doc.setFont(F, 'normal'); doc.setFontSize(9); doc.setTextColor(...MUTED);
     doc.text('Powered by @eswar', M, H - 8);
+    doc.text(inv, W / 2, H - 8, {align: 'center'});
     doc.text('Page ' + p + ' of ' + n, W - M, H - 8, {align: 'right'});
   }
   return doc;
 }
 
-const PDF_NAME = 'expense-report.pdf';
+const fileName = d => d.invoiceNo + '.pdf';
 const note = m => { $('note').textContent = m; $('note').hidden = !m; };
 async function busy(btn, fn) {
   const label = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…'; note('');
@@ -281,17 +295,17 @@ async function busy(btn, fn) {
 $('pdf').addEventListener('click', () => busy($('pdf'), async () => {
   const doc = await buildPdf();
   if (!doc) { window.print(); return; }
-  doc.save(PDF_NAME);
+  doc.save(fileName(doc));
 }));
 $('share').addEventListener('click', () => busy($('share'), async () => {
   const doc = await buildPdf();
   if (!doc) { window.print(); return; }
-  const file = new File([doc.output('blob')], PDF_NAME, {type: 'application/pdf'});
+  const file = new File([doc.output('blob')], fileName(doc), {type: 'application/pdf'});
   if (navigator.canShare && navigator.canShare({files: [file]})) {
     try { await navigator.share({files: [file], title: 'Expense report'}); }
-    catch (e) { if (e.name !== 'AbortError') { doc.save(PDF_NAME); note('Sharing did not open, so the PDF was downloaded. Attach it in WhatsApp.'); } }
+    catch (e) { if (e.name !== 'AbortError') { doc.save(fileName(doc)); note('Sharing did not open, so the PDF was downloaded. Attach it in WhatsApp.'); } }
   } else {
-    doc.save(PDF_NAME);
+    doc.save(fileName(doc));
     note('This device cannot share files directly, so the PDF was downloaded. Attach it in WhatsApp.');
   }
 }));
