@@ -20,7 +20,7 @@
 
   <div class="grid">
     <aside class="side card">
-      <h2>Add expense</h2>
+      <h2 id="formTitle">Add expense</h2>
       <form id="form">
         <label>Person<input id="person" required autocomplete="off" placeholder="e.g. Eswar"></label>
         <label>Date<input id="date" type="date" required></label>
@@ -28,13 +28,13 @@
         <label>Amount (₹)<input id="amount" type="number" inputmode="decimal" min="0" step="0.01" required placeholder="0.00"></label>
         <p class="hint">Someone who spent nothing this month? Add them with ₹0 so they are included in the split.</p>
         <p id="err" class="err" role="alert" hidden></p>
-        <button class="primary" type="submit">Add expense</button>
+        <div class="form-actions"><button class="primary" id="submit" type="submit">Add expense</button><button class="ghost" id="cancel" type="button" hidden>Cancel</button></div>
       </form>
     </aside>
 
     <main class="stack">
       <section class="card">
-        <h2>Expenses</h2>
+        <div class="card-head"><h2>Expenses</h2><button class="ghost small" id="clear" type="button" disabled>Clear all</button></div>
         <table>
           <thead><tr><th>#</th><th data-sort="person" tabindex="0">Person</th><th data-sort="date" tabindex="0">Date</th><th data-sort="item" tabindex="0">Item</th><th data-sort="amount" tabindex="0">Amount</th><th></th></tr></thead>
           <tbody id="list"></tbody>
@@ -50,7 +50,8 @@
       <section class="card">
         <h2>Settlement</h2>
         <div id="settle"></div>
-        <div class="actions"><button class="ghost" id="pdf" type="button">Download PDF</button></div>
+        <div class="actions"><button class="ghost" id="pdf" type="button" disabled>Download PDF</button><button class="primary share" id="share" type="button" disabled>Share PDF</button></div>
+        <p class="note" id="note" role="status" hidden></p>
       </section>
     </main>
   </div>

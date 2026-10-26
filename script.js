@@ -54,7 +54,7 @@ function compute() {
   return {totals, people, total, share, pays};
 }
 
-let lastId = null, sort = {key: null, dir: 1};
+let editingId = null, lastId = null, sort = {key: null, dir: 1};
 const view = () => {
   if (!sort.key) return expenses;
   const k = sort.key;
@@ -74,13 +74,14 @@ document.querySelectorAll('th[data-sort]').forEach(th => {
 function render() {
   const body = $('list');
   body.innerHTML = view().map((x, i) => `
-    <tr data-id="${x.id}" class="${x.id === lastId ? 'row-in' : ''}">
+    <tr data-id="${x.id}" class="${x.id === lastId ? 'row-in' : ''} ${x.id === editingId ? 'editing' : ''}">
       <td class="sn">${i + 1}</td><td class="person">${esc(x.person)}</td>
       <td class="date">${esc(x.date)}</td><td class="item">${esc(x.item)}</td>
       <td class="amt">${money(x.amount)}</td>
-      <td class="act"><button class="del" data-del="${x.id}" aria-label="Delete ${esc(x.item)}" title="Delete"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
+      <td class="act"><button class="edit" data-edit="${x.id}" aria-label="Edit ${esc(x.item)}" title="Edit"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button><button class="del" data-del="${x.id}" aria-label="Delete ${esc(x.item)}" title="Delete"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
     </tr>`).join('');
   lastId = null;
+  ['clear', 'pdf', 'share'].forEach(k => { $(k).disabled = !expenses.length; });
   $('empty').style.display = expenses.length ? 'none' : 'block';
   document.querySelector('table').style.display = expenses.length ? '' : 'none';
 
@@ -111,38 +112,100 @@ $('form').addEventListener('submit', e => {
   if (!item || !isNaN(item)) return fail('Enter an item name (numbers alone are not allowed).');
   if (!date) return fail('Pick a date.');
   person = person.charAt(0).toUpperCase() + person.slice(1).toLowerCase();
-  if (expenses.some(e => e.person === person && e.date === date && e.item === item && e.amount === amount)) return fail('This expense is already in the list.');
+  if (expenses.some(e => e.id !== editingId && e.person === person && e.date === date && e.item === item && e.amount === amount)) return fail('This expense is already in the list.');
   $('err').hidden = true;
-  const x = {id: Date.now() + Math.random(), person, date, item, amount};
-  expenses.push(x); lastId = x.id; save();
-  $('person').value = ''; $('item').value = ''; $('amount').value = ''; $('date').valueAsDate = new Date(); $('person').focus();
-  render();
+  if (editingId !== null) {
+    const t = expenses.find(e => e.id === editingId);
+    if (t) Object.assign(t, {person, date, item, amount});
+    lastId = editingId; endEdit();
+  } else {
+    const x = {id: Date.now() + Math.random(), person, date, item, amount};
+    expenses.push(x); lastId = x.id; resetForm();
+  }
+  save(); render();
 });
 
+function resetForm() {
+  $('person').value = ''; $('item').value = ''; $('amount').value = ''; $('date').valueAsDate = new Date(); $('person').focus();
+}
+function endEdit() {
+  editingId = null;
+  $('formTitle').textContent = 'Add expense'; $('submit').textContent = 'Add expense'; $('cancel').hidden = true;
+  $('err').hidden = true; resetForm();
+}
+$('cancel').addEventListener('click', () => { endEdit(); render(); });
+
 $('list').addEventListener('click', e => {
+  const eb = e.target.closest('[data-edit]');
+  if (eb) {
+    const x = expenses.find(v => v.id === parseFloat(eb.dataset.edit));
+    if (!x) return;
+    editingId = x.id;
+    $('person').value = x.person; $('date').value = x.date; $('item').value = x.item; $('amount').value = x.amount;
+    $('formTitle').textContent = 'Edit expense'; $('submit').textContent = 'Save changes'; $('cancel').hidden = false; $('err').hidden = true;
+    render();
+    $('form').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth', block: 'center'});
+    $('person').focus({preventScroll: true});
+    return;
+  }
   const b = e.target.closest('[data-del]');
   if (!b) return;
   const tr = b.closest('tr'), id = parseFloat(b.dataset.del);
-  const done = () => { expenses = expenses.filter(x => x.id !== id); save(); render(); };
+  const done = () => { expenses = expenses.filter(x => x.id !== id); if (id === editingId) endEdit(); save(); render(); };
   tr.classList.add('row-out');
   setTimeout(done, matchMedia('(prefers-reduced-motion:reduce)').matches ? 0 : 230);
 });
 
-$('pdf').addEventListener('click', () => {
-  if (!window.jspdf) { window.print(); return; }
+let clearTimer = null;
+function resetClear() { clearTimeout(clearTimer); clearTimer = null; $('clear').textContent = 'Clear all'; $('clear').classList.remove('confirm'); }
+$('clear').addEventListener('click', () => {
+  if (!clearTimer) {
+    $('clear').textContent = 'Tap again to confirm'; $('clear').classList.add('confirm');
+    clearTimer = setTimeout(resetClear, 4000);
+    return;
+  }
+  resetClear(); expenses = []; sort = {key: null, dir: 1};
+  document.querySelectorAll('th[data-sort]').forEach(t => t.classList.remove('asc', 'desc'));
+  if (editingId !== null) endEdit();
+  save(); render();
+});
+
+// Fonts are fetched once at page load so the PDF and Share buttons stay instant (needed for share on iOS)
+let fontData = null;
+const fontsReady = (async () => {
+  try {
+    const get = async n => {
+      const r = await fetch('fonts/' + n); if (!r.ok) throw new Error(n);
+      const b = new Uint8Array(await r.arrayBuffer()); let t = '';
+      for (let i = 0; i < b.length; i += 8192) t += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
+      return btoa(t);
+    };
+    fontData = {normal: await get('NotoSans-Regular.ttf'), bold: await get('NotoSans-Bold.ttf')};
+  } catch (e) { fontData = null; }
+})();
+
+async function buildPdf() {
+  if (!window.jspdf) return null;
+  await fontsReady;
   const {jsPDF} = window.jspdf, doc = new jsPDF(), c = compute();
+  let F = 'helvetica', cur = 'Rs. ';
+  if (fontData) {
+    doc.addFileToVFS('NotoSans-Regular.ttf', fontData.normal); doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+    doc.addFileToVFS('NotoSans-Bold.ttf', fontData.bold); doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
+    F = 'NotoSans'; cur = '₹';
+  }
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 14;
   const TEAL = [15, 92, 87], GOLD = [242, 169, 59], INK = [15, 47, 46], MUTED = [93, 115, 113],
         SOFT = [242, 245, 243], RED = [192, 57, 43], GREEN = [29, 122, 79];
-  const pm = n => 'Rs. ' + n.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const pm = n => cur + n.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const dates = expenses.map(x => x.date).sort();
   const period = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : dates[0] + ' to ' + dates[dates.length - 1]) : 'No expenses';
 
   // header band
   doc.setFillColor(...TEAL); doc.rect(0, 0, W, 36, 'F');
   doc.setFillColor(...GOLD); doc.rect(0, 36, W, 2, 'F');
-  doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.text('Expense Report', M, 18);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  doc.setTextColor(255); doc.setFont(F, 'bold'); doc.setFontSize(22); doc.text('Expense Report', M, 18);
+  doc.setFont(F, 'normal'); doc.setFontSize(10);
   doc.text(period + '   |   Generated ' + new Date().toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}), M, 27);
 
   // stat cards
@@ -152,20 +215,20 @@ $('pdf').addEventListener('click', () => {
     const x = M + i * (cw + 6);
     doc.setFillColor(...SOFT); doc.roundedRect(x, 46, cw, 22, 3, 3, 'F');
     doc.setFillColor(...GOLD); doc.rect(x, 50, 1.5, 14, 'F');
-    doc.setTextColor(...MUTED); doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.text(label, x + 6, 55);
-    doc.setTextColor(...INK); doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.text(val, x + 6, 63);
+    doc.setTextColor(...MUTED); doc.setFontSize(9); doc.setFont(F, 'normal'); doc.text(label, x + 6, 55);
+    doc.setTextColor(...INK); doc.setFontSize(13); doc.setFont(F, 'bold'); doc.text(val, x + 6, 63);
   });
 
   let y = 82;
   const section = title => {
     if (y > H - 50) { doc.addPage(); y = 20; }
     doc.setFillColor(...GOLD); doc.rect(M, y - 5, 2, 7, 'F');
-    doc.setTextColor(...INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(title, M + 5, y);
+    doc.setTextColor(...INK); doc.setFont(F, 'bold'); doc.setFontSize(13); doc.text(title, M + 5, y);
     y += 4;
   };
   const table = (head, body, opts = {}) => {
     doc.autoTable({startY: y, head: [head], body, theme: 'striped', margin: {left: M, right: M},
-      styles: {fontSize: 10, cellPadding: 3, textColor: INK, lineWidth: 0},
+      styles: {font: F, fontSize: 10, cellPadding: 3, textColor: INK, lineWidth: 0},
       headStyles: {fillColor: TEAL, textColor: 255, fontStyle: 'bold'},
       alternateRowStyles: {fillColor: SOFT}, ...opts,
       didParseCell: d => {
@@ -202,11 +265,36 @@ $('pdf').addEventListener('click', () => {
   for (let p = 1; p <= n; p++) {
     doc.setPage(p);
     doc.setDrawColor(...GOLD); doc.setLineWidth(.4); doc.line(M, H - 14, W - M, H - 14);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...MUTED);
+    doc.setFont(F, 'normal'); doc.setFontSize(9); doc.setTextColor(...MUTED);
     doc.text('Powered by @eswar', M, H - 8);
     doc.text('Page ' + p + ' of ' + n, W - M, H - 8, {align: 'right'});
   }
-  doc.save('expense-report.pdf');
-});
+  return doc;
+}
+
+const PDF_NAME = 'expense-report.pdf';
+const note = m => { $('note').textContent = m; $('note').hidden = !m; };
+async function busy(btn, fn) {
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…'; note('');
+  try { await fn(); } finally { btn.textContent = label; btn.disabled = !expenses.length; }
+}
+$('pdf').addEventListener('click', () => busy($('pdf'), async () => {
+  const doc = await buildPdf();
+  if (!doc) { window.print(); return; }
+  doc.save(PDF_NAME);
+}));
+$('share').addEventListener('click', () => busy($('share'), async () => {
+  const doc = await buildPdf();
+  if (!doc) { window.print(); return; }
+  const file = new File([doc.output('blob')], PDF_NAME, {type: 'application/pdf'});
+  if (navigator.canShare && navigator.canShare({files: [file]})) {
+    try { await navigator.share({files: [file], title: 'Expense report'}); }
+    catch (e) { if (e.name !== 'AbortError') { doc.save(PDF_NAME); note('Sharing did not open, so the PDF was downloaded. Attach it in WhatsApp.'); } }
+  } else {
+    doc.save(PDF_NAME);
+    note('This device cannot share files directly, so the PDF was downloaded. Attach it in WhatsApp.');
+  }
+}));
+
 
 render();
