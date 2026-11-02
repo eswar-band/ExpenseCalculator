@@ -2,7 +2,14 @@ const $ = id => document.getElementById(id);
 const KEY = 'expenses-v1';
 let expenses = [];
 try { expenses = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(expenses)); } catch (e) {} };
+const cap = n => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase();
+expenses.forEach(x => { x.skipped = Array.isArray(x.skipped) ? x.skipped : []; });
+// drop skipped names that no longer have any expense of their own
+function normalize() {
+  const names = new Set(expenses.map(x => x.person));
+  expenses.forEach(x => { x.skipped = (x.skipped || []).filter(n => names.has(n)); });
+}
+const save = () => { normalize(); try { localStorage.setItem(KEY, JSON.stringify(expenses)); } catch (e) {} };
 const money = n => '₹' + n.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 $('date').valueAsDate = new Date();
@@ -33,25 +40,37 @@ function countTo(el, to) {
   })(t0);
 }
 
+// Works in paise (whole numbers) so shares and settlements always add up exactly
 function compute() {
-  const totals = {};
-  expenses.forEach(x => totals[x.person] = (totals[x.person] || 0) + x.amount);
-  const people = Object.keys(totals);
-  const total = people.reduce((s, p) => s + totals[p], 0);
-  const share = people.length ? total / people.length : 0;
-  const bal = people.map(p => ({p, v: Math.round((totals[p] - share) * 100) / 100}));
-  const debtors = bal.filter(b => b.v < 0).map(b => ({...b})).sort((a, b) => a.v - b.v);
-  const creditors = bal.filter(b => b.v > 0).map(b => ({...b})).sort((a, b) => b.v - a.v);
+  normalize();
+  const people = [];
+  expenses.forEach(x => { if (!people.includes(x.person)) people.push(x.person); });
+  const paid = {}, owe = {};
+  people.forEach(p => { paid[p] = 0; owe[p] = 0; });
+  let totalC = 0, hasSkips = false;
+  expenses.forEach(x => {
+    const cents = Math.round(x.amount * 100);
+    totalC += cents; paid[x.person] += cents;
+    if (x.skipped.length) hasSkips = true;
+    let part = people.filter(p => !x.skipped.includes(p));
+    if (!part.length) part = people;
+    const base = Math.floor(cents / part.length); let rem = cents - base * part.length;
+    part.forEach(p => { owe[p] += base + (rem > 0 ? 1 : 0); if (rem > 0) rem--; });
+  });
+  const creditors = people.filter(p => paid[p] - owe[p] > 0).map(p => ({p, v: paid[p] - owe[p]})).sort((a, b) => b.v - a.v);
+  const debtors = people.filter(p => paid[p] - owe[p] < 0).map(p => ({p, v: owe[p] - paid[p]})).sort((a, b) => b.v - a.v);
   const pays = [];
   let i = 0, j = 0;
   while (i < debtors.length && j < creditors.length) {
-    const amt = Math.min(-debtors[i].v, creditors[j].v);
-    if (amt > 0.004) pays.push({from: debtors[i].p, to: creditors[j].p, amt});
-    debtors[i].v += amt; creditors[j].v -= amt;
-    if (Math.abs(debtors[i].v) < 0.005) i++;
-    if (Math.abs(creditors[j].v) < 0.005) j++;
+    const amt = Math.min(debtors[i].v, creditors[j].v);
+    if (amt > 0) pays.push({from: debtors[i].p, to: creditors[j].p, amt: amt / 100});
+    debtors[i].v -= amt; creditors[j].v -= amt;
+    if (!debtors[i].v) i++;
+    if (!creditors[j].v) j++;
   }
-  return {totals, people, total, share, pays};
+  const totals = {}, owes = {};
+  people.forEach(p => { totals[p] = paid[p] / 100; owes[p] = owe[p] / 100; });
+  return {totals, owes, people, total: totalC / 100, share: people.length ? totalC / people.length / 100 : 0, hasSkips, pays};
 }
 
 let editingId = null, lastId = null, sort = {key: null, dir: 1};
@@ -76,7 +95,7 @@ function render() {
   body.innerHTML = view().map((x, i) => `
     <tr data-id="${x.id}" class="${x.id === lastId ? 'row-in' : ''} ${x.id === editingId ? 'editing' : ''}">
       <td class="sn">${i + 1}</td><td class="person">${esc(x.person)}</td>
-      <td class="date">${esc(x.date)}</td><td class="item">${esc(x.item)}</td>
+      <td class="date">${esc(x.date)}</td><td class="item">${esc(x.item)}${x.skipped.length ? `<small class="skip">Skipped: ${x.skipped.map(esc).join(', ')}</small>` : ''}</td>
       <td class="amt">${money(x.amount)}</td>
       <td class="act"><button class="edit" data-edit="${x.id}" aria-label="Edit ${esc(x.item)}" title="Edit"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button><button class="del" data-del="${x.id}" aria-label="Delete ${esc(x.item)}" title="Delete"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
     </tr>`).join('');
@@ -89,16 +108,54 @@ function render() {
   countTo($('total'), c.total);
   $('summary').innerHTML = c.people.length
     ? c.people.map(p => {
-        const d = Math.round((c.share - c.totals[p]) * 100) / 100;
+        const d = Math.round((c.owes[p] - c.totals[p]) * 100) / 100;
         const note = d > 0 ? `<em class="pay-neg">needs to pay ${money(d)}</em>` : d < 0 ? `<em class="pay-pos">needs to receive ${money(-d)}</em>` : '<em>settled</em>';
-        return `<div class="chip"><b>${money(c.totals[p])}</b><span>${esc(p)} paid</span>${note}</div>`;
+        return `<div class="chip"><b>${money(c.totals[p])}</b><span>${esc(p)} paid</span>${c.hasSkips ? `<small>share ${money(c.owes[p])}</small>` : ''}${note}</div>`;
     }).join('')
-      + `<div class="chip"><b>${money(c.share)}</b><span>Each person's share</span></div>`
+      + (c.hasSkips ? '' : `<div class="chip"><b>${money(c.share)}</b><span>Each person's share</span></div>`)
     : '<div class="empty">Totals appear here.</div>';
   $('settle').innerHTML = c.pays.length
     ? c.pays.map(x => `<div class="pay"><span>${esc(x.from)}</span><span class="arrow">pays</span><span>${esc(x.to)}</span><span class="amt">${money(x.amt)}</span></div>`).join('')
     : `<div class="empty">${expenses.length ? 'Everyone is settled up.' : 'Add expenses to see who pays whom.'}</div>`;
+  renderSkip();
 }
+
+// ---- Skip any one ----
+const skipSel = new Set();
+function skipPeople() {
+  const names = [];
+  expenses.forEach(x => { if (!names.includes(x.person)) names.push(x.person); });
+  const typed = $('person').value.trim();
+  if (typed && isNaN(typed) && !names.includes(cap(typed))) names.push(cap(typed));
+  return names;
+}
+function renderSkip() {
+  const on = $('skipToggle').checked;
+  $('skipPanel').hidden = !on;
+  if (!on) return;
+  const names = skipPeople();
+  [...skipSel].forEach(n => { if (!names.includes(n)) skipSel.delete(n); });
+  $('skipChips').innerHTML = names.length
+    ? names.map(n => `<button type="button" class="pick" data-skip="${esc(n)}" aria-pressed="${skipSel.has(n)}">${esc(n)}</button>`).join('')
+    : '<span class="hint">Add a person first.</span>';
+  const left = names.filter(n => !skipSel.has(n)).length, amt = parseFloat($('amount').value);
+  const info = $('skipInfo');
+  info.classList.toggle('bad', !!names.length && !left);
+  if (!names.length) info.textContent = '';
+  else if (!left) info.textContent = 'Everyone is skipped. Keep at least one person.';
+  else if (amt > 0) {
+    const cents = Math.round(amt * 100);
+    info.textContent = `Split among ${left} ${left === 1 ? 'person' : 'people'}: ${cents % left ? 'about ' : ''}${money(amt / left)} each`;
+  } else info.textContent = `Split among ${left} ${left === 1 ? 'person' : 'people'}`;
+}
+$('skipToggle').addEventListener('change', () => { if (!$('skipToggle').checked) skipSel.clear(); renderSkip(); });
+$('skipChips').addEventListener('click', e => {
+  const b = e.target.closest('[data-skip]'); if (!b) return;
+  const n = b.dataset.skip; skipSel.has(n) ? skipSel.delete(n) : skipSel.add(n);
+  renderSkip();
+});
+$('person').addEventListener('input', renderSkip);
+$('amount').addEventListener('input', renderSkip);
 
 $('form').addEventListener('submit', e => {
   e.preventDefault();
@@ -111,22 +168,26 @@ $('form').addEventListener('submit', e => {
   if (!item && amount === 0) item = 'No expense';
   if (!item || !isNaN(item)) return fail('Enter an item name (numbers alone are not allowed).');
   if (!date) return fail('Pick a date.');
-  person = person.charAt(0).toUpperCase() + person.slice(1).toLowerCase();
-  if (expenses.some(e => e.id !== editingId && e.person === person && e.date === date && e.item === item && e.amount === amount)) return fail('This expense is already in the list.');
+  person = cap(person);
+  const skipped = $('skipToggle').checked ? skipPeople().filter(n => skipSel.has(n)) : [];
+  if ($('skipToggle').checked && skipPeople().length && skipped.length >= skipPeople().length) return fail('At least one person must share this expense.');
+  const key = a => [...a].sort().join('|');
+  if (expenses.some(e => e.id !== editingId && e.person === person && e.date === date && e.item === item && e.amount === amount && key(e.skipped) === key(skipped))) return fail('This expense is already in the list.');
   $('err').hidden = true;
   if (editingId !== null) {
     const t = expenses.find(e => e.id === editingId);
-    if (t) Object.assign(t, {person, date, item, amount});
+    if (t) Object.assign(t, {person, date, item, amount, skipped});
     lastId = editingId; endEdit();
   } else {
-    const x = {id: Date.now() + Math.random(), person, date, item, amount};
+    const x = {id: Date.now() + Math.random(), person, date, item, amount, skipped};
     expenses.push(x); lastId = x.id; resetForm();
   }
   save(); render();
 });
 
 function resetForm() {
-  $('person').value = ''; $('item').value = ''; $('amount').value = ''; $('date').valueAsDate = new Date(); $('person').focus();
+  $('person').value = ''; $('item').value = ''; $('amount').value = ''; $('date').valueAsDate = new Date();
+  $('skipToggle').checked = false; skipSel.clear(); renderSkip(); $('person').focus();
 }
 function endEdit() {
   editingId = null;
@@ -142,6 +203,7 @@ $('list').addEventListener('click', e => {
     if (!x) return;
     editingId = x.id;
     $('person').value = x.person; $('date').value = x.date; $('item').value = x.item; $('amount').value = x.amount;
+    skipSel.clear(); x.skipped.forEach(n => skipSel.add(n)); $('skipToggle').checked = x.skipped.length > 0;
     $('formTitle').textContent = 'Edit expense'; $('submit').textContent = 'Save changes'; $('cancel').hidden = false; $('err').hidden = true;
     render();
     $('form').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth', block: 'center'});
@@ -217,7 +279,7 @@ async function buildPdf() {
   doc.setFont(F, 'normal'); doc.setFontSize(9); doc.text('Generated ' + stamp(now), W - M, 27, {align: 'right'});
 
   // stat cards
-  const stats = [['Total spent', pm(c.total)], ['People', String(c.people.length)], ['Each share', pm(c.share)]];
+  const stats = [['Total spent', pm(c.total)], ['People', String(c.people.length)], c.hasSkips ? ['Expenses', String(expenses.length)] : ['Each share', pm(c.share)]];
   const cw = (W - 2 * M - 12) / 3;
   stats.forEach(([label, val], i) => {
     const x = M + i * (cw + 6);
@@ -249,14 +311,24 @@ async function buildPdf() {
 
   section('Expenses');
   table(['#', 'Person', 'Date', 'Item', 'Amount'],
-    expenses.length ? expenses.map((x, i) => [i + 1, x.person, x.date, x.item, pm(x.amount)]) : [['', 'No expenses added', '', '', '']],
-    {columnStyles: {0: {cellWidth: 12}, 4: {halign: 'right', fontStyle: 'bold'}}});
+    expenses.length ? expenses.map((x, i) => [i + 1, x.person, x.date, x.item + (x.skipped.length ? '\n ' : ''), pm(x.amount)]) : [['', 'No expenses added', '', '', '']],
+    {columnStyles: {0: {cellWidth: 12}, 4: {halign: 'right', fontStyle: 'bold'}},
+     didDrawCell: d => {
+       if (d.section !== 'body' || d.column.index !== 3) return;
+       const sk = (expenses[d.row.index] || {}).skipped || [];
+       if (!sk.length) return;
+       doc.setFont(F, 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED);
+       const w = d.cell.width - d.cell.padding('left') - d.cell.padding('right');
+       let line = doc.splitTextToSize('Skipped: ' + sk.join(', '), w);
+       const text = line.length > 1 ? line[0].replace(/.{1}$/, '…') : line[0];
+       doc.text(text, d.cell.x + d.cell.padding('left'), d.cell.y + d.cell.padding('top') + 7.2);
+     }});
 
   section('Summary by person');
   table(['Person', 'Paid', 'Share', 'Balance'],
     c.people.map(p => {
-      const d = Math.round((c.share - c.totals[p]) * 100) / 100;
-      return [p, pm(c.totals[p]), pm(c.share), d > 0 ? 'Owes ' + pm(d) : d < 0 ? 'Gets back ' + pm(-d) : 'Settled'];
+      const d = Math.round((c.owes[p] - c.totals[p]) * 100) / 100;
+      return [p, pm(c.totals[p]), pm(c.owes[p]), d > 0 ? 'Owes ' + pm(d) : d < 0 ? 'Gets back ' + pm(-d) : 'Settled'];
     }),
     {columnStyles: {1: {halign: 'right'}, 2: {halign: 'right'}, 3: {halign: 'right', fontStyle: 'bold'}},
      didParseCell: d => {

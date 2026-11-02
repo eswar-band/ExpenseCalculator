@@ -27,6 +27,14 @@
         <label>Item<input id="item" autocomplete="off" placeholder="e.g. Dinner (optional for ₹0)"></label>
         <label>Amount (₹)<input id="amount" type="number" inputmode="decimal" min="0" step="0.01" required placeholder="0.00"></label>
         <p class="hint">Someone who spent nothing this month? Add them with ₹0 so they are included in the split.</p>
+        <div class="skip-box">
+          <label class="switch"><input type="checkbox" id="skipToggle" role="switch"><span class="track" aria-hidden="true"></span><span class="switch-label">SKIP ANY ONE</span></label>
+          <div id="skipPanel" class="skip-panel" hidden>
+            <p class="hint">Tick the people who skip this expense. To skip someone new, add them first with ₹0.</p>
+            <div id="skipChips" class="pick-row"></div>
+            <p id="skipInfo" class="hint" role="status"></p>
+          </div>
+        </div>
         <p id="err" class="err" role="alert" hidden></p>
         <div class="form-actions"><button class="primary" id="submit" type="submit">Add expense</button><button class="ghost" id="cancel" type="button" hidden>Cancel</button></div>
       </form>
