@@ -28,6 +28,13 @@ $('theme').addEventListener('click', () => {
 });
 paintToggle();
 
+$('year').textContent = new Date().getFullYear();
+
+const helpDlg = $('helpDlg');
+$('help').addEventListener('click', () => { typeof helpDlg.showModal === 'function' ? helpDlg.showModal() : helpDlg.setAttribute('open', ''); helpDlg.querySelector('.help-body').scrollTop = 0; });
+$('helpClose').addEventListener('click', () => helpDlg.close());
+helpDlg.addEventListener('click', e => { if (e.target === helpDlg) helpDlg.close(); });
+
 let shownTotal = 0;
 function countTo(el, to) {
   const from = shownTotal, t0 = performance.now(), dur = 400;
@@ -351,7 +358,7 @@ async function buildPdf() {
     doc.setPage(p);
     doc.setDrawColor(...GOLD); doc.setLineWidth(.4); doc.line(M, H - 14, W - M, H - 14);
     doc.setFont(F, 'normal'); doc.setFontSize(9); doc.setTextColor(...MUTED);
-    doc.text('Powered by @eswar', M, H - 8);
+    doc.text('Powered by @bandieswar © ' + now.getFullYear(), M, H - 8);
     doc.text(inv, W / 2, H - 8, {align: 'center'});
     doc.text('Page ' + p + ' of ' + n, W - M, H - 8, {align: 'right'});
   }

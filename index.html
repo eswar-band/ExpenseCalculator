@@ -14,7 +14,7 @@
 <div class="wrap">
   <header>
     <h1>Expense Calculator</h1>
-    <div class="tools"><button class="ghost theme" id="theme" type="button" aria-label="Switch theme">☾</button>
+    <div class="tools"><button class="ghost theme" id="help" type="button" aria-label="Help guide" title="Help guide">?</button><button class="ghost theme" id="theme" type="button" aria-label="Switch theme">☾</button>
     <div class="total"><small>Total spent</small><strong id="total">₹0.00</strong></div></div>
   </header>
 
@@ -28,7 +28,7 @@
         <label>Amount (₹)<input id="amount" type="number" inputmode="decimal" min="0" step="0.01" required placeholder="0.00"></label>
         <p class="hint">Someone who spent nothing this month? Add them with ₹0 so they are included in the split.</p>
         <div class="skip-box">
-          <label class="switch"><input type="checkbox" id="skipToggle" role="switch"><span class="track" aria-hidden="true"></span><span class="switch-label">SKIP ANY ONE</span></label>
+          <label class="switch"><input type="checkbox" id="skipToggle" role="switch"><span class="track" aria-hidden="true"></span><span class="switch-label">Skip Any Person</span></label>
           <div id="skipPanel" class="skip-panel" hidden>
             <p class="hint">Tick the people who skip this expense. To skip someone new, add them first with ₹0.</p>
             <div id="skipChips" class="pick-row"></div>
@@ -63,8 +63,75 @@
       </section>
     </main>
   </div>
-  <footer>Powered by @eswar</footer>
+  <footer>Powered by @bandieswar &copy; <span id="year">2026</span></footer>
 </div>
+
+
+<dialog id="helpDlg" class="help" aria-labelledby="helpTitle">
+  <div class="help-head">
+    <h2 id="helpTitle">Help Guide</h2>
+    <button type="button" class="ghost help-x" id="helpClose" aria-label="Close help guide">&#10005;</button>
+  </div>
+  <div class="help-body">
+    <p class="lead">Split shared expenses fairly. Add what each person paid, and the app shows who should pay whom.</p>
+
+    <details open><summary>Quick start</summary><div class="d-body"><ol>
+      <li>Enter who paid (<b>Person</b>), the <b>Date</b>, the <b>Item</b> and the <b>Amount</b>, then tap <b>Add expense</b>. Add one entry for every payment, whoever made it.</li>
+      <li>Someone paid nothing? Add them once with Amount <b>0</b> so they are counted in the split. Item is optional for &#8377;0.</li>
+      <li><b>Summary</b> shows what each person paid and what they need to pay or receive. <b>Settlement</b> shows who pays whom, using the fewest payments.</li>
+      <li>Made a mistake? Tap the pencil to edit or the bin to delete. Tap a column heading (Person, Date, Item, Amount) to sort.</li>
+      <li>Tap <b>Download PDF</b> or <b>Share PDF</b> to send the report to the group.</li>
+      <li>Starting a new month? Tap <b>Clear all</b> and tap again to confirm.</li>
+    </ol></div></details>
+
+    <details><summary>How the calculation works</summary><div class="d-body">
+      <ul>
+        <li>Everyone with at least one entry counts as a person in the split.</li>
+        <li>Each expense is divided <b>equally</b> among all people, except anyone you skip (see Skip Any Person).</li>
+        <li><b>Paid</b> is the total of a person's entries. <b>Owes</b> is the sum of their shares. <b>Balance = Paid &minus; Owes</b>. A positive balance means they get money back, a negative one means they need to pay.</li>
+        <li>Settlement matches people who owe with people who are owed, so the number of payments stays small.</li>
+        <li>Amounts are counted in paise, so &#8377;100 split three ways is 33.33, 33.33 and 33.34, and the totals always add up.</li>
+      </ul>
+      <p class="ex-title">Example</p>
+      <p>Cab &#8377;300 paid by Anu, shared by all three. Dinner &#8377;900 paid by Ravi, Kiran skipped (so Ravi and Anu pay &#8377;450 each).</p>
+      <div class="ex" role="table" aria-label="Example calculation">
+        <div class="ex-r ex-h" role="row"><span>Person</span><span>Paid</span><span>Owes</span><span>Result</span></div>
+        <div class="ex-r" role="row"><span>Ravi</span><span>&#8377;900</span><span>&#8377;550</span><span class="pos">gets back &#8377;350</span></div>
+        <div class="ex-r" role="row"><span>Anu</span><span>&#8377;300</span><span>&#8377;550</span><span class="neg">pays &#8377;250</span></div>
+        <div class="ex-r" role="row"><span>Kiran</span><span>&#8377;0</span><span>&#8377;100</span><span class="neg">pays &#8377;100</span></div>
+      </div>
+      <p>Settlement: <b>Anu pays Ravi &#8377;250</b> and <b>Kiran pays Ravi &#8377;100</b>.</p>
+    </div></details>
+
+    <details><summary>Skip Any Person</summary><div class="d-body"><ul>
+      <li>Use this when someone did not take part in an expense, such as a dinner they missed.</li>
+      <li>Turn on the <b>Skip Any Person</b> switch under Amount. The people appear as buttons. Tap a name to skip them (it turns red and crossed out). The rest share the expense equally, and a line shows the split.</li>
+      <li>A skipped person pays nothing for that expense only. The person who paid can skip too, but at least one person must stay in.</li>
+      <li>Only people who already have an entry appear, plus the name typed in Person. To skip someone new, <b>add them first with &#8377;0</b>.</li>
+      <li>Skipped names show in small grey text under the item, in the list and in the PDF. The switch turns off again after each expense.</li>
+    </ul></div></details>
+
+    <details><summary>Use cases</summary><div class="d-body"><ul>
+      <li><b>Roommates, monthly bills:</b> everyone adds what they paid (rent, electricity, groceries). Add &#8377;0 for anyone who paid nothing. At month end, download the PDF, then Clear all.</li>
+      <li><b>Trip with friends:</b> add each payment as it happens. If one person skipped a dinner or an activity, skip them on that expense.</li>
+      <li><b>Office lunch:</b> one person pays the bill; skip the colleagues who were absent.</li>
+      <li><b>Gift or treat:</b> for a gift meant for Anu, skip Anu so the others share the cost. If the payer was not part of an expense, such as a taxi the others took, the payer can skip too.</li>
+    </ul></div></details>
+
+    <details><summary>PDF and sharing</summary><div class="d-body"><ul>
+      <li><b>Download PDF</b> saves a report with totals, the expense list (with Skipped notes), a summary per person, and who pays whom.</li>
+      <li>Each report has an invoice number such as <b>INV-YYYYMMDD-0001</b>, shown in the header, the footer and the file name. The same data on the same day keeps the same number.</li>
+      <li><b>Share PDF</b> opens your phone's share sheet, where you can pick WhatsApp or any other app. If your device cannot share files directly, the PDF is downloaded so you can attach it yourself.</li>
+    </ul></div></details>
+
+    <details><summary>Good to know</summary><div class="d-body"><ul>
+      <li>Your data is saved <b>only in this browser on this device</b>. It is not uploaded anywhere, and other phones or laptops will not see it. Clearing browser data removes it.</li>
+      <li><b>Clear all</b> cannot be undone, so download the PDF first if you want a record.</li>
+      <li>Names are matched by spelling: "ravi" and "Ravi" are the same person, but "Ravi K" is a different one.</li>
+      <li>Use the moon/sun button at the top to switch between dark and light mode.</li>
+    </ul></div></details>
+  </div>
+</dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>

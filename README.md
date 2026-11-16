@@ -6,3 +6,4 @@ Version 4.0 - edit expense, clear all, share PDF, rupee symbol in PDF (Noto Sans
 Version 4.1 - invoice number + timestamp in PDF, Action column, fonts embedded in fonts.js
 Version 4.2 - PDF header and Action column tweaks (red text), separate index.html, styles.css, script.js, fonts.js
 Version 5.0 - SKIP ANY ONE toggle (equal split among people who do not skip), skipped names shown in list and PDF, exact paise-based settlement
+Version 5.1 - Help Guide, footer "Powered by @bandieswar", label renamed to "Skip Any Person"
